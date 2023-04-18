@@ -1,0 +1,164 @@
+
+
+
+
+```{r}
+set.seed(123)
+car_initial_split <- initial_split(less, prop = 0.80)
+car_initial_split
+
+less
+```
+
+model recipe:
+
+```{r}
+preprocessing_recipe <- recipe(real_cost ~ length + stations + tunnel + continent, data = training(car_initial_split)) %>%
+    
+    # Encode Categorical Data Types
+    # step_dummy(all_nominal()) %>%
+    
+    # Combine low-frequency categories
+    # step_other(all_nominal(), threshold = 0.02, other = "other") %>%
+    
+    # Impute missing
+    step_knnimpute(all_predictors(), neighbors = 3)
+    
+    # Remove unnecessary columns
+    # step_rm(creation_date, line) %>
+
+```
+
+```{r}
+atio_recipe2 <- prep(preprocessing_recipe, training = biomass_tr)
+imputed <- bake(ratio_recipe2, biomass_te)
+```
+
+
+
+baking:
+
+```{r}
+car_training_preprocessed_tbl <- preprocessing_recipe %>% 
+  bake(training(car_initial_split))
+
+training(car_initial_split)
+
+```
+
+# validate
+
+categorical features:
+
+```{r}
+car_training_preprocessed_tbl %>% plot_bar(maxcat = 5)
+
+```
+
+
+numerical:
+
+```{r}
+car_training_preprocessed_tbl %>% 
+  plot_histogram()
+
+```
+
+# cross validation
+
+```{r}
+set.seed(123)
+
+car_cv_folds <- training(car_initial_split) %>% 
+    bake(preprocessing_recipe, new_data = .) %>%
+    vfold_cv(v = 5)
+
+car_cv_folds
+```
+
+# models 
+
+## regression
+
+
+```{r}
+glmnet_model <- linear_reg(
+        mode    = "regression", 
+        penalty = tune(), 
+        mixture = tune()
+    ) %>%
+    set_engine("lm")
+
+glmnet_model
+```
+## xgbooost
+
+```{r}
+xgboost_model <- boost_tree(
+        mode       = "regression", 
+        trees      = 1000, 
+        min_n      = tune(), 
+        tree_depth = tune(), 
+        learn_rate = tune()
+    ) %>%
+    set_engine("xgboost", objective = "reg:squarederror")
+
+xgboost_model
+```
+
+```{r}
+glmnet_params <- parameters(penalty(), mixture())
+glmnet_params
+
+set.seed(123)
+glmnet_grid <- grid_max_entropy(glmnet_params, size = 20)
+glmnet_grid
+```
+
+
+
+```{r}
+glmnet_grid %>%
+    ggplot(aes(penalty, mixture)) +
+    geom_point(color = palette_light()["blue"], size = 3) +
+    scale_x_log10() +
+    theme_tq() +
+    labs(title = "Max Entropy Grid", x = "Penalty (log scale)", y = "Mixture")
+```
+
+```{r}
+
+xgboost_params <- parameters(min_n(), tree_depth(), learn_rate())
+xgboost_params
+
+set.seed(123)
+xgboost_grid <- grid_max_entropy(xgboost_params, size = 30)
+xgboost_grid
+```
+
+```{r}
+glmnet_stage_1_cv_results_tbl <- tune_grid(
+    object =  glmnet_model,
+    preprocessor = preprocessing_recipe,
+    resamples = car_cv_folds,
+    grid      = glmnet_grid,
+    metrics   = metric_set(mae, mape, rmse, rsq),
+    control   = control_grid(verbose = TRUE)
+)
+```
+
+
+
+```{r}
+library(xgboost)
+
+xgboost_stage_1_cv_results_tbl <- tune_grid(
+    object =  xgboost_model,
+    preprocessor = preprocessing_recipe,
+    resamples = car_cv_folds,
+    grid      = xgboost_grid,
+    metrics   = metric_set(mae, mape, rmse, rsq),
+    control   = control_grid(verbose = TRUE)
+)
+```
+
