@@ -1,0 +1,212 @@
+
+```{r}
+# Tidymodels
+library(tidymodels)
+# Parallel Processing
+library(doParallel)
+
+all_cores <- parallel::detectCores(logical = FALSE)
+registerDoParallel(cores = all_cores)
+
+# Data Cleaning
+library(janitor)
+
+# EDA 
+library(skimr)
+library(correlationfunnel)
+library(DataExplorer)
+
+# ggplot2 Helpers
+library(gghighlight)
+library(patchwork)
+
+# Core
+library(tidyverse)
+library(tidyquant)
+library(knitr)
+```
+
+
+
+
+```{r}
+# Get the Data
+
+# Read in with tidytuesdayR package 
+# Install from CRAN via: install.packages("tidytuesdayR")
+# This loads the readme and all the datasets for the week of interest
+
+# Either ISO-8601 date or year/week works!
+
+tuesdata <- tidytuesdayR::tt_load('2021-01-05')
+tuesdata <- tidytuesdayR::tt_load(2021, week = 2)
+
+transit_cost <- tuesdata$transit_cost
+
+# Or read in the data manually
+
+transit_cost <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-01-05/transit_cost.csv', na =  c("X", "NA"))
+
+```
+
+
+
+# questions
+
+1) what explains the price
+
+```{r}
+transit_cost <- transit_cost %>%
+  filter((!is.na(e) | rr != 1), real_cost > 0, country != "FI") %>% 
+  readr::type_convert(na = c("years", "5 NA"))
+```
+
+
+```{r}
+
+transit_cost %>%
+  count(real_cost, sort = T)
+
+transit_cost %>%
+  skim()
+```
+
+```{r}
+transit_cost %>%
+    ggplot(aes(tunnel, cost_km_millions)) +
+    geom_point(color = palette_light()["blue"], alpha = 0.15) +
+    geom_smooth(method = "lm") +
+    theme_tq() +
+    labs(title = "x", x = "a", y = "b") 
+
+```
+
+```{r}
+library(countrycode)
+
+transit_cost <-transit_cost %>%
+  mutate(continent = countrycode(country, "iso2c", "continent" ))
+
+
+transit_cost %>%
+  ggplot(aes(cost_km_millions, length)) +
+  geom_point() +
+  facet_wrap(vars(continent))
+```
+clear cluster, but americans, asia and europe has outliers:
+
+
+```{r}
+library(gghighlight)
+
+
+transit_cost %>%
+    ggplot(aes(cost_km_millions, length)) +
+    geom_point() +
+    
+gghighlight(cost_km_millions > 1000, label_key = line) +
+
+  facet_wrap(vars(continent)) 
+  
+```
+
+
+```{r}
+transit_cost %>%
+    ggplot(aes(cost_km_millions, length)) +
+  geom_point() +
+    # gghighlight(length > 5000 , label_key = line ) +
+  
+
+  facet_wrap(vars(continent))
+
+```
+
+
+less data:
+
+```{r}
+transit_cost %>%
+  # filter(str_length(start_year) > 4) %>%
+  count(start_year, sort = T)
+
+less <- transit_cost %>%
+  select(line, length, tunnel, stations, real_cost, continent) %>%
+  filter(!is.na(continent))
+```
+
+# missing values:
+
+```{r}
+less %>% plot_missing()
+```
+## tunnel
+
+```{r}
+less %>%
+  filter(is.na(tunnel))
+
+less %>%
+  filter(!is.na(tunnel)) %>%
+  group_by() %>%
+  summarise(min(tunnel),max(tunnel),mean(tunnel),median(tunnel))
+
+less %>%
+  ggplot(aes(tunnel)) +
+  geom_histogram()
+
+
+```
+categorical variables:
+
+```{r}
+less %>% plot_bar(nrow = 4)
+
+
+```
+
+correlatations:
+
+```{r}
+
+less
+
+bina <- less %>%
+    drop_na() %>%
+      binarize(n_bins = 5) 
+
+bina %>%
+  glimpse()
+  
+
+
+bina %>%
+    correlate(`real_cost__6274.292_Inf`)  %>%
+    plot_correlation_funnel()
+
+```
+numerical values:
+
+```{r}
+less %>% plot_histogram()
+
+```
+
+we have high skew.
+
+
+```{r}
+less %>%
+      ggplot(aes(length, real_cost)) +
+    geom_violin() +
+    geom_jitter(alpha = 0.5) +
+    scale_y_log10()
+```
+
+```{r}
+library(feather)
+
+less %>%
+  write_feather("less.feather")
+```
+
