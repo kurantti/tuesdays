@@ -1,0 +1,23 @@
+---
+title: "hydrowaste"
+author: "JP"
+format: html
+---
+
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+tuesdata <- tidytuesdayR::tt_load(2022, week = 38)
+tuesdata
+df <- tuesdata |> pluck(1)
+```
+
+```{r}
+library(skimr)
+df |> skim()
+```
+
